@@ -318,6 +318,7 @@ python main_rerank_multilevel_memory.py \
     --augment true \
     --memory_mode true
 ```
+
 ---
 
 **注意**: 使用 LLM 生成知识时，需要配置相应的 API 密钥。知识编码阶段会从 Hugging Face 下载预训练模型，请确保网络连接正常。
