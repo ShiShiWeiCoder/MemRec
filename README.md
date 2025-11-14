@@ -318,19 +318,6 @@ python main_rerank_multilevel_memory.py \
     --augment true \
     --memory_mode true
 ```
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。
-
-## 📧 联系方式
-
-如有问题或建议，请通过 Issue 联系。
-
 ---
 
 **注意**: 使用 LLM 生成知识时，需要配置相应的 API 密钥。知识编码阶段会从 Hugging Face 下载预训练模型，请确保网络连接正常。
