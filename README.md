@@ -45,7 +45,7 @@ python generate.py --dataset mooc
 
 ### 第三步：知识生成
 
-本项目已包含大模型生成的知识文件（`.klg`文件），无需运行大模型生成代码。每个数据集对应三个知识文件，位于 `data/{dataset}/knowledge_multilevel_memory/` 目录下：
+我们没有公布相关大模型生成的代码，而是直接附上生成的知识。每个数据集对应三个知识文件，位于 `data/{dataset}/knowledge_multilevel_memory/` 目录下：
 - `item.klg`: 物品多级记忆知识
 - `user.klg`: 用户历史多级记忆知识
 - `memory_analysis.klg`: 多级记忆分析知识
