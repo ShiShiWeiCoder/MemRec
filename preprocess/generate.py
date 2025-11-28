@@ -4,6 +4,11 @@ Supports both Coursera and MOOC datasets
 '''
 
 import os
+import sys
+
+# 添加项目根目录到路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 import pickle
 import random
@@ -28,8 +33,47 @@ def generate_ctr_data(sequential_data, lm_hist_idx, uid_set, rating_threshold=0)
     return full_data
 
 
-def generate_rank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, rank_list_len=50, rank_item_from_hist=5, rating_threshold=0):
+def generate_rank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, rank_list_len=50, rank_item_from_hist=5, rating_threshold=0, dataset_name='general'):
     """Generate Rank data for a set of users"""
+    dataset = dataset_name.lower()
+    
+    if dataset == 'coursera':
+        rank_num = 15
+        min_hist_len = 5
+        min_rank_num = 10
+        step = 8
+        full_data = []
+        
+        for uid in uid_set:
+            uid_str = str(uid)
+            if uid_str not in sequential_data:
+                continue
+            
+            courses = sequential_data[uid_str][0]
+            labels = sequential_data[uid_str][1]
+            
+            if uid_str in lm_hist_idx:
+                hist_idx_data = lm_hist_idx[uid_str]
+                start_idx = len(hist_idx_data) if isinstance(hist_idx_data, list) else hist_idx_data
+                start_idx = max(start_idx, min_hist_len)
+            else:
+                start_idx = min_hist_len
+            
+            for i in range(start_idx, len(courses), step):
+                available_items = len(courses) - i
+                if available_items < min_rank_num:
+                    break
+                actual_rank_num = min(rank_num, available_items)
+                candidate_courses = courses[i:i+actual_rank_num]
+                candidate_labels = labels[i:i+actual_rank_num]
+                try:
+                    user_idx = int(uid)
+                except (TypeError, ValueError):
+                    user_idx = uid
+                full_data.append([user_idx, i, candidate_courses, candidate_labels])
+        
+        return full_data
+    
     full_data = []
     
     for uid in uid_set:
@@ -52,11 +96,9 @@ def generate_rank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, ran
             if item_set:
                 neg_sample = random.sample(item_set, neg_sample_num)
             else:
-                # For Coursera: use available items from sequence
                 available_items = [i for i in item_seq if i not in chosen_iid]
                 neg_sample = random.sample(available_items, min(neg_sample_num, len(available_items)))
                 if len(neg_sample) < neg_sample_num:
-                    # Pad with zeros if not enough items
                     neg_sample += [0] * (neg_sample_num - len(neg_sample))
             
             candidates = chosen_iid + neg_sample
@@ -72,8 +114,47 @@ def generate_rank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, ran
     return full_data
 
 
-def generate_rerank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, rerank_list_len=10, rerank_item_from_hist=4, rating_threshold=0):
+def generate_rerank_data(sequential_data, lm_hist_idx, uid_set, item_set=None, rerank_list_len=10, rerank_item_from_hist=4, rating_threshold=0, dataset_name='general'):
     """Generate Rerank data for a set of users"""
+    dataset = dataset_name.lower()
+    
+    if dataset == 'coursera':
+        rerank_num = 10
+        min_hist_len = 5
+        min_rerank_num = 5
+        step = 4
+        full_data = []
+        
+        for uid in uid_set:
+            uid_str = str(uid)
+            if uid_str not in sequential_data:
+                continue
+            
+            courses = sequential_data[uid_str][0]
+            labels = sequential_data[uid_str][1]
+            
+            if uid_str in lm_hist_idx:
+                hist_idx_data = lm_hist_idx[uid_str]
+                start_idx = len(hist_idx_data) if isinstance(hist_idx_data, list) else hist_idx_data
+                start_idx = max(start_idx, min_hist_len)
+            else:
+                start_idx = min_hist_len
+            
+            for i in range(start_idx, len(courses), step):
+                available_items = len(courses) - i
+                if available_items < min_rerank_num:
+                    break
+                actual_rerank_num = min(rerank_num, available_items)
+                candidate_courses = courses[i:i+actual_rerank_num]
+                candidate_labels = labels[i:i+actual_rerank_num]
+                try:
+                    user_idx = int(uid)
+                except (TypeError, ValueError):
+                    user_idx = uid
+                full_data.append([user_idx, i, candidate_courses, candidate_labels])
+        
+        return full_data
+    
     full_data = []
     
     for uid in uid_set:
@@ -207,7 +288,7 @@ def generate_hist_prompt_multilevel_memory(sequential_data, multilevel_memory, i
         prompt += (
             "Analyze this user's learning preferences considering factors such as subject domain, instructional approach, "
             "complexity level, pacing and duration, depth versus breadth, assessment methods, and real-world applications. "
-            "Provide clear explanations based on the hierarchical memory patterns. "
+            "Provide clear explanations based on the multilevel memory patterns. "
             "Your response must be in English without subtitles, bullet points, or numbered lists."
         )
         
@@ -344,10 +425,10 @@ def main_coursera():
     
     train_ctr = generate_ctr_data(sequential_data, lm_hist_idx, train_users)
     test_ctr = generate_ctr_data(sequential_data, lm_hist_idx, test_users)
-    train_rank = generate_rank_data(sequential_data, lm_hist_idx, train_users)
-    test_rank = generate_rank_data(sequential_data, lm_hist_idx, test_users)
-    train_rerank = generate_rerank_data(sequential_data, lm_hist_idx, train_users)
-    test_rerank = generate_rerank_data(sequential_data, lm_hist_idx, test_users)
+    train_rank = generate_rank_data(sequential_data, lm_hist_idx, train_users, dataset_name='coursera')
+    test_rank = generate_rank_data(sequential_data, lm_hist_idx, test_users, dataset_name='coursera')
+    train_rerank = generate_rerank_data(sequential_data, lm_hist_idx, train_users, dataset_name='coursera')
+    test_rerank = generate_rerank_data(sequential_data, lm_hist_idx, test_users, dataset_name='coursera')
     
     item_prompts = generate_item_prompt_multilevel_memory(item2attributes, itemid2title, id2item, multilevel_memory, 'coursera')
     hist_prompts = generate_hist_prompt_multilevel_memory(sequential_data, multilevel_memory, id2user, itemid2title, item2attributes, id2item, 'coursera')
@@ -379,13 +460,13 @@ def main_mooc():
     save_pickle(train_ctr, os.path.join(data_dir, 'ctr.train'))
     save_pickle(test_ctr, os.path.join(data_dir, 'ctr.test'))
     
-    train_rank = generate_rank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['train'], item_set)
-    test_rank = generate_rank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['test'], item_set)
+    train_rank = generate_rank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['train'], item_set, dataset_name='mooc')
+    test_rank = generate_rank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['test'], item_set, dataset_name='mooc')
     save_pickle(train_rank, os.path.join(data_dir, 'rank.train'))
     save_pickle(test_rank, os.path.join(data_dir, 'rank.test'))
     
-    train_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['train'], item_set)
-    test_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['test'], item_set)
+    train_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['train'], item_set, dataset_name='mooc')
+    test_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['test'], item_set, dataset_name='mooc')
     save_pickle(train_rerank, os.path.join(data_dir, 'rerank.train'))
     save_pickle(test_rerank, os.path.join(data_dir, 'rerank.test'))
     

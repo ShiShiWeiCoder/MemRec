@@ -72,6 +72,13 @@ class MemoryDataset(Data.Dataset):
                 hist_rating_seq = rating_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
                 hist_attri_seq = [self.item2attribution[str(idx)] for idx in hist_item_seq]
                 
+                # 对历史序列进行 padding 到 max_hist_len（确保所有样本的历史长度一致）
+                if len(hist_item_seq) < self.max_hist_len:
+                    pad_len = self.max_hist_len - len(hist_item_seq)
+                    hist_item_seq = hist_item_seq + [0] * pad_len
+                    hist_rating_seq = hist_rating_seq + [0] * pad_len
+                    hist_attri_seq = hist_attri_seq + [0] * pad_len
+                
                 # 处理候选项属性和历史属性
                 if self.attr_ft_num == 1:
                     processed_candidates_attr = []

@@ -123,7 +123,7 @@ for model in model_list:
                 log_print(f"   🎯 多头注意力: {memory_attn_heads}头融合")
                 
                 # 构造训练命令（支持多头注意力融合）
-                cmd = ['python', '-u', 'training/rerank.py',
+                cmd = ['python', '-u', os.path.join(base_dir, 'training', 'rerank.py'),
                        f'--data_dir={data_dir}',
                        f'--augment={augment}',
                        f'--aug_prefix={aug_prefix}',
@@ -159,50 +159,50 @@ for model in model_list:
                 log_print("-" * 30)
                 
                 # 运行训练
+                import sys
                 process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
-                    universal_newlines=True
+                    universal_newlines=True,
+                    cwd=base_dir,
+                    env=dict(os.environ, PYTHONUNBUFFERED='1')  # 强制Python不缓冲输出
                 )
                 
                 output_lines = []
                 if process.stdout is not None:
                     for line in process.stdout:
                         line = line.rstrip()
-                        print(line)
-                        print(line, file=log_file)
-                        log_file.flush()
+                        print(line, flush=True)  # 强制刷新标准输出
+                        print(line, file=log_file, flush=True)  # 强制刷新日志文件
                         output_lines.append(line + '\n')
                     
                 process.wait()
                 output = ''.join(output_lines)
                 
-                # 提取训练结果 - 提取所有k值的最终测试结果（根据数据集动态调整）
+                # 提取训练结果 - 提取所有k值的最终测试结果
                 metrics_dict = {}
-                if dataset_name == 'coursera':
-                    k_values = [1, 2, 3, 5, 7]  # Coursera使用@1,2,3,5,7
-                else:  # mooc
-                    k_values = [1, 3, 5, 7, 10]  # MOOC使用@1,3,5,7,10
                 
-                for k in k_values:
-                    pattern = rf"@{k}, MAP: ([\d\.]+), NDCG: ([\d\.]+), HR: ([\d\.]+)"
-                    matches = re.findall(pattern, output)
-                    if matches:
-                        # 获取最后一次的结果（最终测试结果）
-                        last_match = matches[-1]
-                        metrics_dict[k] = {
-                            'map': float(last_match[0]),
-                            'ndcg': float(last_match[1])
-                            # 不再记录HR
-                        }
+                # 查找 "Final Test Results:" 后的所有指标
+                final_section = output.split("Final Test Results:")[-1] if "Final Test Results:" in output else output
+                
+                # 提取所有 @k 的指标
+                pattern = r"@(\d+), MAP: ([\d\.]+), NDCG: ([\d\.]+), HR: ([\d\.]+)"
+                matches = re.findall(pattern, final_section)
+                for match in matches:
+                    k = int(match[0])
+                    metrics_dict[k] = {
+                        'map': float(match[1]),
+                        'ndcg': float(match[2]),
+                        'hr': float(match[3])
+                    }
                 
                 # 提取MRR（全局指标，无@K）
                 mrr_pattern = r"^MRR: ([\d\.]+)"
-                mrr_matches = re.findall(mrr_pattern, output, re.MULTILINE)
-                mrr_value = float(mrr_matches[-1]) if mrr_matches else None
+                mrr_matches = re.findall(mrr_pattern, final_section, re.MULTILINE)
+                mrr_value = float(mrr_matches[0]) if mrr_matches else None
                 
                 # 记录结果（根据数据集选择主要指标）
                 primary_k = 3 if dataset_name == 'coursera' else 5  # Coursera用@3，MOOC用@5

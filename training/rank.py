@@ -228,6 +228,7 @@ def train_multilevel_memory(args):
     res, eval_loss, eval_time = eval_multilevel_memory(model, test_loader, metric_scope, False, compute_auc=True)
     
     for epoch in range(args.epoch_num):
+        print(f"\nEpoch {epoch + 1}/{args.epoch_num}")
         t = time.time()
         train_loss = []
         model.train()
@@ -248,17 +249,49 @@ def train_multilevel_memory(args):
             global_step += 1
                 
         train_time = time.time() - t
+        avg_train_loss = np.mean(train_loss)
+        print(f"Train Loss: {avg_train_loss:.5f}, Time: {train_time:.2f}s")
+        
         res, eval_loss, eval_time = eval_multilevel_memory(model, test_loader, metric_scope, True, compute_auc=True)
         main_k_idx = len(metric_scope) // 2
         current_map = res[0][main_k_idx]
+        
+        # 打印评估结果
+        print(f"Test Loss: {eval_loss:.5f}, Time: {eval_time:.2f}s")
+        for i, scope in enumerate(metric_scope):
+            print(f"@{scope}, MAP: {res[0][i]:.5f}, NDCG: {res[1][i]:.5f}, HR: {res[2][i]:.5f}")
+        print(f"MRR: {res[3]:.5f}")
+        if res[4] is not None:
+            print(f"AUC: {res[4]:.5f}")
+        
+        # 调试信息：检查第一个batch的数据格式
+        if epoch == 0:
+            model.eval()
+            with torch.no_grad():
+                for batch, data in enumerate(test_loader):
+                    outputs = model(data)
+                    logits = outputs['logits']
+                    labels = outputs['labels']
+                    print(f"\n调试信息 - 第一个batch:")
+                    print(f"  logits shape: {logits.shape}")
+                    print(f"  labels shape: {labels.shape}")
+                    print(f"  logits sample (first sample, first 5): {logits[0][:5].tolist()}")
+                    print(f"  labels sample (first sample, first 5): {labels[0][:5].tolist()}")
+                    print(f"  labels中有正样本: {torch.any(labels >= 1).item()}")
+                    print(f"  labels中正样本总数: {torch.sum(labels >= 1).item()}")
+                    print(f"  labels中正样本位置: {torch.nonzero(labels >= 1, as_tuple=False)[:10].tolist()}")
+                    break
         
         if current_map > best_map:
             best_map = current_map
             best_model_state = copy.deepcopy(model.state_dict())
             patience = 0
+            print(f"New best MAP@{metric_scope[main_k_idx]}: {best_map:.5f}")
         else:
             patience += 1
+            print(f"Patience: {patience}/{args.patience}")
             if patience >= args.patience:
+                print("Early stopping triggered")
                 break
     
     main_k = metric_scope[len(metric_scope) // 2]
@@ -267,7 +300,14 @@ def train_multilevel_memory(args):
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
     final_res, final_loss, final_time = eval_multilevel_memory(model, test_loader, metric_scope, True, compute_auc=True)
-    print(f"Final - Loss: {final_loss:.5f}, MAP@{main_k}: {final_res[0][main_k_idx]:.5f}, NDCG@{main_k}: {final_res[1][main_k_idx]:.5f}, HR@{main_k}: {final_res[2][main_k_idx]:.5f}, MRR: {final_res[3]:.5f}")
+    
+    # 打印所有k值的最终结果
+    print(f"\nFinal Test Results:")
+    for i, k in enumerate(metric_scope):
+        print(f"@{k}, MAP: {final_res[0][i]:.5f}, NDCG: {final_res[1][i]:.5f}, HR: {final_res[2][i]:.5f}")
+    print(f"MRR: {final_res[3]:.5f}")
+    if final_res[4] is not None:
+        print(f"AUC: {final_res[4]:.5f}")
 
 
 def parse_args_multilevel_memory():

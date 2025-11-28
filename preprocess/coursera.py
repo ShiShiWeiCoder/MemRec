@@ -12,6 +12,14 @@ import numpy as np
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Preprocess Coursera dataset')
+    parser.add_argument('--k_core_user', type=int, default=3, help='k-core threshold for users')
+    parser.add_argument('--k_core_item', type=int, default=3, help='k-core threshold for items')
+    parser.add_argument('--sensory_memory_len', type=int, default=1, help='Length of sensory memory window')
+    parser.add_argument('--working_memory_len', type=int, default=2, help='Length of working memory window')
+    parser.add_argument('--longterm_memory_domains', type=int, default=3, help='Number of domains tracked for long-term memory')
+    parser.add_argument('--test_ratio', type=float, default=0.1, help='Ratio of users placed in the test split')
+    parser.add_argument('--neg_ratio', type=int, default=1, help='Negative sampling ratio (pos:neg = (neg_ratio+1):1)')
+    parser.add_argument('--seed', type=int, default=2023, help='Random seed for reproducibility')
     return parser.parse_args()
 
 def load_coursera_data(data_dir):
@@ -131,7 +139,8 @@ def add_negative_samples(user_history, all_courses, neg_ratio=1, seed=2023):
         pos_set = set(pos_courses)
         all_items = [(course, 1) for course in pos_courses]
         
-        neg_candidates = list(all_courses - pos_set)
+        # 使用排序后的列表消除 set 带来的随机遍历顺序，保证在相同 seed 下完全可复现
+        neg_candidates = sorted(all_courses - pos_set)
         num_neg = len(pos_courses) // (neg_ratio + 1)
         neg_samples = random.sample(neg_candidates, min(num_neg, len(neg_candidates)))
         all_items.extend([(course, 0) for course in neg_samples])
@@ -330,18 +339,8 @@ def save_processed_data(output_dir, sequence_data, item2attributes, itemid2title
 def main():
     args = parse_args()
     
-    # 默认参数
-    k_core_user = 3
-    k_core_item = 3
-    sensory_memory_len = 1
-    working_memory_len = 2
-    longterm_memory_domains = 3
-    test_ratio = 0.1
-    neg_ratio = 1
-    seed = 2023
-    
-    random.seed(seed)
-    np.random.seed(seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(base_dir, 'data', 'coursera')
@@ -349,22 +348,14 @@ def main():
     
     enrolled_df, meta_df = load_coursera_data(data_dir)
     user_history = build_interaction_data(enrolled_df, meta_df)
-    user_history = k_core_filter(user_history, k_core_user, k_core_item)
+    user_history = k_core_filter(user_history, args.k_core_user, args.k_core_item)
     
-    # 创建args对象用于extract_multilevel_memory
-    class Args:
-        def __init__(self):
-            self.sensory_memory_len = sensory_memory_len
-            self.working_memory_len = working_memory_len
-            self.longterm_memory_domains = longterm_memory_domains
-    
-    extract_args = Args()
-    multilevel_memory, course_domain_map = extract_multilevel_memory(user_history, meta_df, extract_args)
+    multilevel_memory, course_domain_map = extract_multilevel_memory(user_history, meta_df, args)
     
     all_courses = set()
     for courses in user_history.values():
         all_courses.update(courses)
-    sequence_data = add_negative_samples(user_history, all_courses, neg_ratio, seed)
+    sequence_data = add_negative_samples(user_history, all_courses, args.neg_ratio, args.seed)
     
     user2id, item2id, id2user, id2item, sequence_data_mapped = create_id_mapping(user_history)
     
@@ -379,7 +370,7 @@ def main():
     
     train_test_split, multilevel_memory_mapped = split_train_test(
         sequence_data_mapped, multilevel_memory, user2id, 
-        test_ratio=test_ratio, fixed_hist_len=5, seed=seed
+        test_ratio=args.test_ratio, fixed_hist_len=5, seed=args.seed
     )
     
     save_processed_data(output_dir, sequence_data_mapped, item2attributes, itemid2title,

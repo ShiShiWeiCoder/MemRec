@@ -32,7 +32,6 @@ def log_print(*args, **kwargs):
 # 记录开始时间
 log_print(f"多级记忆增强Rank模型训练开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 log_print(f"数据集: {dataset_name.upper()}")
-log_print("=" * 60)
 
 # ---------------------------
 # 多级记忆增强训练参数
@@ -53,13 +52,13 @@ hist_file = os.path.join(data_dir, f'{aug_prefix}.hist')
 item_file = os.path.join(data_dir, f'{aug_prefix}.item')
 
 if not (os.path.exists(hist_file) and os.path.exists(item_file)):
-    log_print(f"❌ 错误: {aug_prefix} 增强文件不存在")
-    log_print(f"   需要的文件: {hist_file}")
-    log_print(f"   需要的文件: {item_file}")
-    log_print("   请先运行知识编码生成这些文件")
+    log_print(f"错误: {aug_prefix} 增强文件不存在")
+    log_print(f"需要的文件: {hist_file}")
+    log_print(f"需要的文件: {item_file}")
+    log_print("请先运行知识编码生成这些文件")
     sys.exit(1)
 
-log_print(f"✅ 使用多级记忆增强: {aug_prefix}")
+log_print(f"使用多级记忆增强: {aug_prefix}")
 
 # 基础训练参数
 augment = True
@@ -80,7 +79,7 @@ if dataset_name == 'coursera':
     dropout = 0.4  # Coursera: 更强dropout (0.3 → 0.4)
     convert_dropout = 0.3  # Coursera: 更强转换dropout (0.2 → 0.3)
     patience = 3  # Coursera: 降低耐心值,更早停止防过拟合 (8 → 3)
-    log_print("📊 Coursera超强正则化: wd=5e-3, dropout=0.4, lr=5e-4, patience=3")
+    log_print("Coursera超强正则化: wd=5e-3, dropout=0.4, lr=5e-4, patience=3")
 else:  # mooc
     weight_decay = 0  # MOOC: 原始参数（数据集较大，不易过拟合）
     batch_size_list = [256, 512]  # MOOC: 原始批次大小
@@ -88,7 +87,7 @@ else:  # mooc
     dropout = 0.0  # MOOC: 原始dropout
     convert_dropout = 0.0  # MOOC: 原始转换层dropout
     patience = 3  # MOOC: 原始早停耐心
-    log_print("📊 使用MOOC原始参数（适合大数据集）")
+    log_print("使用MOOC原始参数（适合大数据集）")
 
 # 参数搜索网格（根据数据集已设置）
 # 模型列表（所有CTR模型均可用于Rank）
@@ -112,8 +111,8 @@ if dataset_name == 'coursera':
     enable_knowledge_reduction = False
     knowledge_reduction_dim = 768
     knowledge_reduction_dropout = 0.0
-    log_print("🔧 使用简化的多级记忆模块（适合小数据集）")
-    log_print("🔧 保持原始768维BERT向量")
+    log_print("使用简化的多级记忆模块（适合小数据集）")
+    log_print("保持原始768维BERT向量")
 else:  # mooc
     export_num = 2  # MOOC: 原始基础专家数量
     memory_specific_export_num = 3  # MOOC: 原始记忆专用专家数量
@@ -123,25 +122,26 @@ else:  # mooc
     enable_knowledge_reduction = False
     knowledge_reduction_dim = 768
     knowledge_reduction_dropout = 0.0
-    log_print("🔧 使用完整的多级记忆模块（适合大数据集）")
+    log_print("使用完整的多级记忆模块（适合大数据集）")
 
 # 训练结果记录
 results = []
 
 # 循环训练所有模型和参数组合
 for model in model_list:
-    log_print(f"\n🚀 开始训练模型: {model}")
+    log_print(f"\n开始训练模型: {model}")
     log_print("-" * 50)
     
     for batch_size in batch_size_list:
         for lr in lr_list:
-            log_print(f"\n📋 参数组合: 批次={batch_size}, 学习率={lr}")
-            log_print(f"   🧠 多级记忆: 感觉记忆 + 工作记忆 + 长期记忆")
-            log_print(f"   📊 记忆专家数: {memory_specific_export_num}")
-            log_print(f"   🎯 多头注意力: {memory_attn_heads}头融合")
+            log_print(f"\n参数组合: 批次={batch_size}, 学习率={lr}")
+            log_print(f"多级记忆: 感觉记忆 + 工作记忆 + 长期记忆")
+            log_print(f"记忆专家数: {memory_specific_export_num}")
+            log_print(f"多头注意力: {memory_attn_heads}头融合")
             
             # 构造训练命令（支持多头注意力融合）
-            cmd = ['python', '-u', 'training/rank.py',
+            rank_script = os.path.join(base_dir, 'training', 'rank.py')
+            cmd = ['python', '-u', rank_script,
                    f'--data_dir={data_dir}',
                    f'--augment={augment}',
                    f'--aug_prefix={aug_prefix}',
@@ -162,15 +162,15 @@ for model in model_list:
                    f'--final_mlp_arch={final_mlp}',
                    f'--dropout={dropout}',
                    f'--metric_scope={metric_scope}',
-                   # 🧠 多级记忆核心参数（支持多头注意力）
+                   # 多级记忆核心参数（支持多头注意力）
                    '--memory_mode=true',
                    f'--memory_fusion_type=attention',
                    f'--memory_specific_export_num={memory_specific_export_num}',
                    f'--memory_weight_decay=0.01',
-                   # 🎯 多头注意力融合参数
+                   # 多头注意力融合参数
                    '--enable_memory_attention=true',
                    f'--memory_attn_heads={memory_attn_heads}',
-                   # 🔧 知识降维参数
+                   # 知识降维参数
                    f'--enable_knowledge_reduction={enable_knowledge_reduction}',
                    f'--knowledge_reduction_dim={knowledge_reduction_dim}',
                    f'--knowledge_reduction_dropout={knowledge_reduction_dropout}'
@@ -186,7 +186,8 @@ for model in model_list:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                universal_newlines=True
+                universal_newlines=True,
+                cwd=base_dir  # 设置工作目录为项目根目录
             )
             
             output_lines = []
@@ -244,8 +245,7 @@ for model in model_list:
                 f'ndcg@{main_k}': metrics_dict.get(main_k, {}).get('ndcg'),
                 f'hr@{main_k}': metrics_dict.get(main_k, {}).get('hr'),
                 'mrr': mrr_value,  # MRR是全局指标
-                'auc': auc_value,
-                'save_dir': save_dir
+                'auc': auc_value
             }
             results.append(result)
             
@@ -258,7 +258,7 @@ for model in model_list:
                     map_score = metrics_dict[main_k]['map']
                     ndcg_score = metrics_dict[main_k]['ndcg']
                     hr_score = metrics_dict[main_k]['hr']
-                    log_print(f"✅ 完成: MAP@{main_k}={map_score:.5f}, NDCG@{main_k}={ndcg_score:.5f}, HR@{main_k}={hr_score:.5f}")
+                    log_print(f"完成: MAP@{main_k}={map_score:.5f}, NDCG@{main_k}={ndcg_score:.5f}, HR@{main_k}={hr_score:.5f}")
                     if mrr_value is not None:
                         log_print(f"   MRR={mrr_value:.5f}")
                     if auc_value is not None:
@@ -295,7 +295,7 @@ if valid_results:
                   f"注意力头={result['attn_heads']} | NDCG@{main_k}={ndcg_val:.5f}")
     
     # 每个模型的最佳结果（输出完整指标）
-    log_print(f"\n📊 各模型最佳性能 (完整指标):")
+    log_print(f"\n各模型最佳性能 (完整指标):")
     log_print("-" * 70)
     for model in model_list:
         model_results = [r for r in valid_results if r['model'] == model]
@@ -331,39 +331,22 @@ if valid_results:
     max_map = max(maps)
     min_map = min(maps)
     
-    log_print(f"\n📈 性能统计:")
+    log_print(f"\n性能统计:")
     log_print(f"   平均MAP@{main_k}: {avg_map:.5f}")
     log_print(f"   最高MAP@{main_k}: {max_map:.5f}")
     log_print(f"   最低MAP@{main_k}: {min_map:.5f}")
     log_print(f"   成功训练: {len(valid_results)}/{len(results)} 组合")
 
 else:
-    log_print("❌ 没有成功的训练结果")
+    log_print("没有成功的训练结果")
 
 # 保存结果到JSON文件
 results_file = f'multilevel_memory_rank_training_results_{dataset_name}.json'
 with open(results_file, 'w', encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=2)
 
-log_print(f"\n💾 结果已保存到: {results_file}")
-log_print(f"🏁 多级记忆增强Rank训练完成: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-log_print("=" * 60)
-
-# 输出认知心理学框架说明
-log_print(f"\n🧠 认知心理学多级记忆框架:")
-log_print("=" * 50)
-log_print("🔥 感觉记忆 (Sensory Memory):")
-log_print("   - 即时需求和最近浏览 (3-5次交互)")
-log_print("   - 捕获用户的瞬时兴趣和直觉反应")
-log_print("")
-log_print("⚡ 工作记忆 (Working Memory):")
-log_print("   - 当前会话行为模式 (10-15次交互)")
-log_print("   - 处理正在进行的学习任务")
-log_print("")
-log_print("🏗️ 长期记忆 (Long-Term Memory):")
-log_print("   - 职业发展方向 (基于领域分布)")
-log_print("   - 存储积累的知识和技能")
-log_print("=" * 50)
+log_print(f"\n结果已保存到: {results_file}")
+log_print(f"多级记忆增强Rank训练完成: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 log_file.close()
 

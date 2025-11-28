@@ -229,11 +229,15 @@ def train_multilevel_memory(args):
     test_set = MultilevelMemoryDataset(args.data_dir, 'test', args.task, args.max_hist_len, 
                                       args.augment, args.aug_prefix, args.memory_mode)
     
+    print("Creating data loaders...", flush=True)
     train_loader = Data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
 
+    print(f"Loading {args.algo} model...", flush=True)
     model = load_model_multilevel_memory(args, test_set)
+    print("Model loaded, creating optimizer...", flush=True)
     optimizer, scheduler = get_optimizer_multilevel_memory(args, model, len(train_set))
+    print("Optimizer created, starting training...", flush=True)
 
     best_map = 0
     best_model_state = None
@@ -241,7 +245,9 @@ def train_multilevel_memory(args):
     patience = 0
     metric_scope = [int(x.strip()) for x in args.metric_scope.split(',')] if isinstance(args.metric_scope, str) else args.metric_scope
     
+    print("Running initial evaluation...", flush=True)
     res, eval_loss, eval_time = eval_multilevel_memory(model, test_loader, metric_scope, False)
+    print(f"Initial eval done: loss={eval_loss:.5f}", flush=True)
     
     for epoch in range(args.epoch_num):
         t = time.time()
@@ -276,12 +282,22 @@ def train_multilevel_memory(args):
             if patience >= args.patience:
                 break
     
-    print(f"Best MAP@5: {best_map:.5f}")
+    # 使用metric_scope中间的k值作为主要指标
+    main_k_idx = len(metric_scope) // 2
+    main_k = metric_scope[main_k_idx]
+    print(f"Best MAP@{main_k}: {best_map:.5f}")
     
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
     final_res, final_loss, final_time = eval_multilevel_memory(model, test_loader, metric_scope, True)
-    print(f"Final - Loss: {final_loss:.5f}, MAP@5: {final_res[0][1]:.5f}, NDCG@5: {final_res[1][1]:.5f}, HR@5: {final_res[2][1]:.5f}, MRR: {final_res[3]:.5f}")
+    
+    # 打印所有k值的最终结果
+    print(f"\nFinal Test Results:")
+    for i, k in enumerate(metric_scope):
+        print(f"@{k}, MAP: {final_res[0][i]:.5f}, NDCG: {final_res[1][i]:.5f}, HR: {final_res[2][i]:.5f}")
+    print(f"MRR: {final_res[3]:.5f}")
+    if final_res[4] is not None:
+        print(f"AUC: {final_res[4]:.5f}")
 
 
 def parse_args_multilevel_memory():
