@@ -71,8 +71,6 @@ python encoder.py --dataset mooc
 
 **在 training 文件夹下运行**：
 ```bash
-python rank_run.py --dataset coursera
-# 或
 python rank_run.py --dataset mooc
 ```
 
