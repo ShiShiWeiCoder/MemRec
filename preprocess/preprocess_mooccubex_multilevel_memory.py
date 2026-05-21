@@ -9,10 +9,12 @@ import numpy as np
 
 
 DEFAULT_SEED = 1234
-SENSORY_MEMORY_LEN = 5
-WORKING_MEMORY_LEN = 15
-LONG_TERM_MIN_INTERACTIONS = 5
-LONG_TERM_MIN_TIMESPAN = 0
+SENSORY_RATIO = 0.08
+WORKING_RATIO = 0.22
+MEMORY_TIMESPAN_DAYS = 30
+SENSORY_TIGHTENING = 4
+LONG_TERM_MIN_INTERACTIONS = 7
+LONG_TERM_MIN_TIMESPAN = 30
 
 
 def set_seed(seed=DEFAULT_SEED):
@@ -83,7 +85,7 @@ def load_users(user_file):
         pairs.sort(key=lambda x: x[1])
         interactions[uid] = [(item_id, rating) for item_id, _, rating in pairs]
         timestamps[uid] = {item_id: ts for item_id, ts, _ in pairs}
-        user_attrs[uid] = {"anonymous_profile": user.get("profile", {})}
+        user_attrs[uid] = {"profile": user.get("profile", {})}
     return interactions, user_attrs, timestamps
 
 
@@ -91,8 +93,22 @@ def extract_multilevel_memory(user_items, meta_infos, user_timestamps=None):
     memory_data = {}
     for uid, interactions in user_items.items():
         positive_items = [item for item, rating in interactions if rating > 0]
-        sensory = positive_items[-SENSORY_MEMORY_LEN:]
-        working = positive_items[-WORKING_MEMORY_LEN:]
+        n = len(positive_items)
+        sensory_cut = max(1, int(np.ceil(SENSORY_RATIO * n)))
+        working_cut = max(sensory_cut + 1, int(np.ceil(WORKING_RATIO * n)))
+        latest_time = max(user_timestamps.get(uid, {}).values(), default=None) if user_timestamps else None
+
+        def within_days(item, days):
+            if latest_time is None or not user_timestamps or item not in user_timestamps.get(uid, {}):
+                return True
+            return (latest_time - user_timestamps[uid][item]) / 86400.0 <= days
+
+        sensory = [
+            item for item in positive_items[-sensory_cut:]
+            if within_days(item, MEMORY_TIMESPAN_DAYS / SENSORY_TIGHTENING)
+        ]
+        working_candidates = positive_items[-working_cut : max(0, n - sensory_cut)]
+        working = [item for item in working_candidates if within_days(item, MEMORY_TIMESPAN_DAYS)]
 
         field_counter = Counter()
         field_items = defaultdict(list)
@@ -259,7 +275,15 @@ if __name__ == "__main__":
     parser.add_argument("--user_file", required=True)
     parser.add_argument("--output_dir", default="data/MOOCCubeX/proc_data")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--sensory_ratio", type=float, default=SENSORY_RATIO)
+    parser.add_argument("--working_ratio", type=float, default=WORKING_RATIO)
+    parser.add_argument("--long_term_threshold", type=int, default=LONG_TERM_MIN_INTERACTIONS)
+    parser.add_argument("--long_term_min_timespan", type=float, default=LONG_TERM_MIN_TIMESPAN)
     args = parser.parse_args()
 
+    SENSORY_RATIO = args.sensory_ratio
+    WORKING_RATIO = args.working_ratio
+    LONG_TERM_MIN_INTERACTIONS = args.long_term_threshold
+    LONG_TERM_MIN_TIMESPAN = args.long_term_min_timespan
     set_seed(args.seed)
     preprocess(args.course_file, args.user_file, args.output_dir)

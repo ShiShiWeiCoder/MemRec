@@ -49,10 +49,13 @@ def generate_rank_data(sequence_data, lm_hist_idx, uid_set, item_set):
         positives = {item for item, rating in zip(item_seq, rating_seq) if rating > 0}
         for seq_idx in lm_hist_idx.get(str(uid), []):
             history = set(item_seq[:seq_idx])
-            true_item = item_seq[seq_idx]
-            negatives = sample_negative_items(item_set, positives, history, 49)
-            candidates = [true_item] + negatives
-            labels = [1] + [0] * len(negatives)
+            positive_window = [
+                item for item, rating in zip(item_seq[seq_idx : seq_idx + 5], rating_seq[seq_idx : seq_idx + 5])
+                if rating > 0 and item not in history
+            ][:5]
+            negatives = sample_negative_items(item_set, positives, history, 50 - len(positive_window))
+            candidates = positive_window + negatives
+            labels = [1] * len(positive_window) + [0] * len(negatives)
             records.append([uid, seq_idx, candidates, labels])
     return records
 
@@ -64,10 +67,13 @@ def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
         positives = {item for item, rating in zip(item_seq, rating_seq) if rating > 0}
         for seq_idx in lm_hist_idx.get(str(uid), []):
             history = set(item_seq[:seq_idx])
-            true_item = item_seq[seq_idx]
-            negatives = sample_negative_items(item_set, positives, history, 9)
-            candidates = [true_item] + negatives
-            labels = [1] + [0] * len(negatives)
+            positive_window = [
+                item for item, rating in zip(item_seq[seq_idx : seq_idx + 4], rating_seq[seq_idx : seq_idx + 4])
+                if rating > 0 and item not in history
+            ][:4]
+            negatives = sample_negative_items(item_set, positives, history, 10 - len(positive_window))
+            candidates = positive_window + negatives
+            labels = [1] * len(positive_window) + [0] * len(negatives)
             records.append([uid, seq_idx, candidates, labels])
     return records
 

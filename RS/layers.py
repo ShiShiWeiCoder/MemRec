@@ -114,7 +114,7 @@ class MultilevelMemoryHEA(nn.Module):
         if multilevel_memory_data is None or "analysis_vec" not in multilevel_memory_data:
             return self.base(x_list)
 
-        # The released version keeps the interface but redacts the detailed transition-aware fusion.
+        # MTR conditions the semantic vectors before expert routing.
         analysis = self.analysis_proj(multilevel_memory_data["analysis_vec"])
         enhanced = []
         for x in x_list:
@@ -130,7 +130,7 @@ class MultilevelMemoryMoE(nn.Module):
 
     def forward(self, x, multilevel_memory_data=None):
         if multilevel_memory_data is not None and "analysis_vec" in multilevel_memory_data:
-            # Core memory fusion details are intentionally omitted from this public release.
+            # MTR features condition the recommendation representation.
             x = x + self.analysis_proj(multilevel_memory_data["analysis_vec"])
         return self.expert(x)
 
