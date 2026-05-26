@@ -134,13 +134,19 @@ def generate_hist_prompt_multilevel_memory(sequence_data, item2attribute, datama
             memory = multilevel_memory_data.get(key, {})
             recent_titles = [id2title.get(str(item), id2item.get(str(item), "Unknown Course")) for item in item_seq[:seq_idx][-10:]]
             prompts[key] = (
-                "Analyze the learner's preference from recent interactions and multi-level memory slots.\n"
+                "You are an expert learning behavior analyst for course recommendation.\n"
                 f"Dataset: {dataset_name}\n"
-                f"Recent courses: {recent_titles}\n"
-                f"Sensory memory item ids: {memory.get('sensory_memory', [])}\n"
-                f"Working memory item ids: {memory.get('working_memory', [])}\n"
-                f"Long-term memory item ids: {memory.get('long_term_memory', [])}\n"
-                "Return a concise English profile for recommendation."
+                f"Recent interaction courses: {recent_titles}\n"
+                f"Sensory memory courses: {memory.get('sensory_memory', [])}\n"
+                f"Working memory courses: {memory.get('working_memory', [])}\n"
+                f"Long-term memory courses: {memory.get('long_term_memory', [])}\n\n"
+                "Analyze this user's learning preferences considering factors such as subject domain, instructional approach, "
+                "complexity level, pacing and duration, depth versus breadth, assessment methods, and real-world applications. "
+                "Provide clear explanations based on the multilevel memory patterns. "
+                "Focus on how immediate interests (sensory memory), current learning agenda (working memory), and stable accumulation "
+                "(long-term memory) jointly indicate recommendation needs.\n\n"
+                "Your response must be in English without subtitles, bullet points, or Chinese text. "
+                "Translate any Chinese course names to English in your analysis."
             )
     return prompts
 
@@ -152,10 +158,17 @@ def generate_item_prompt_multilevel_memory(item2attribute, datamap, dataset_name
     for item_id, attrs in item2attribute.items():
         fields = [id2attribute.get(str(attr), "Unknown Field") for attr in attrs]
         prompts[str(item_id)] = (
-            f"Describe this course for recommendation in {dataset_name}.\n"
+            "You are an expert in curriculum and learning pathway design.\n"
+            f"Dataset: {dataset_name}\n"
             f"Course title: {id2title.get(str(item_id), 'Unknown Course')}\n"
-            f"Fields: {fields}\n"
-            "Return a compact English semantic representation."
+            f"Course domain fields: {fields}\n\n"
+            "Analyze this course from a learner-memory perspective. Explain: "
+            "(1) what immediate curiosity or short-term motivation it can trigger, "
+            "(2) what working-memory demands it places on learners in terms of prerequisite knowledge, "
+            "cognitive load, practice style, and pacing, and "
+            "(3) what long-term competencies or career-oriented value it can contribute.\n\n"
+            "Your response must be in English without subtitles, bullet points, or Chinese text. "
+            "Translate any Chinese course names to English in your analysis."
         )
     return prompts
 
@@ -164,11 +177,19 @@ def generate_multilevel_memory_analysis_prompt(multilevel_memory_data, datamap, 
     prompts = {}
     for key, memory in multilevel_memory_data.items():
         prompts[key] = (
-            f"Analyze memory transitions for {dataset_name}.\n"
-            f"Sensory memory: {memory.get('sensory_memory', [])}\n"
-            f"Working memory: {memory.get('working_memory', [])}\n"
-            f"Long-term memory: {memory.get('long_term_memory', [])}\n"
-            "Summarize immediate intent, session-level behavior, and stable interest."
+            "You are an expert in cognitive learning dynamics and recommendation reasoning.\n"
+            f"Dataset: {dataset_name}\n"
+            f"Sensory memory courses: {memory.get('sensory_memory', [])}\n"
+            f"Working memory courses: {memory.get('working_memory', [])}\n"
+            f"Long-term memory courses: {memory.get('long_term_memory', [])}\n\n"
+            "Provide a Memory Transition Reflection by analyzing three transition processes: "
+            "attention selection from sensory memory to working memory, consolidation from working memory to long-term memory, "
+            "and retrieval influence from long-term memory to current learning choices. "
+            "Explain which interests are likely temporary, which are becoming stable, and which long-term strengths may facilitate or "
+            "interfere with future course selection. "
+            "Conclude with an integrated judgment of the learner's current stage and near-term recommendation direction.\n\n"
+            "Your response must be in English without subtitles, bullet points, or Chinese text. "
+            "Translate any Chinese course names to English in your analysis."
         )
     return prompts
 
