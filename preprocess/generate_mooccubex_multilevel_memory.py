@@ -199,21 +199,26 @@ def main(proc_dir):
     item2attribute = load_json(os.path.join(proc_dir, "item2attributes.json"))
     datamap = load_json(os.path.join(proc_dir, "datamaps.json"))
 
-    uid_set = [int(uid) for uid in sequence_data.keys()]
-    random.shuffle(uid_set)
-    split = int(len(uid_set) * 0.8)
-    train_uids, test_uids = uid_set[:split], uid_set[split:]
+    uid_set = sorted([int(uid) for uid in sequence_data.keys()])
 
-    lm_hist_idx = {}
+    # Per-user chronological split (9:1), consistent with the paper setup.
+    train_lm_hist_idx = {}
+    test_lm_hist_idx = {}
     for uid in uid_set:
         seq_len = len(sequence_data[str(uid)][0])
-        lm_hist_idx[str(uid)] = list(range(1, seq_len))
+        if seq_len <= 1:
+            train_lm_hist_idx[str(uid)] = []
+            test_lm_hist_idx[str(uid)] = []
+            continue
+        split_idx = max(1, int(seq_len * 0.9))
+        train_lm_hist_idx[str(uid)] = list(range(1, split_idx))
+        test_lm_hist_idx[str(uid)] = list(range(split_idx, seq_len))
 
     item_set = {int(item) for item in datamap["id2item"].keys() if int(item) != 0}
-    rank_train = generate_rank_data(sequence_data, lm_hist_idx, train_uids, item_set)
-    rank_test = generate_rank_data(sequence_data, lm_hist_idx, test_uids, item_set)
-    rerank_train = generate_rerank_data(sequence_data, lm_hist_idx, train_uids, item_set)
-    rerank_test = generate_rerank_data(sequence_data, lm_hist_idx, test_uids, item_set)
+    rank_train = generate_rank_data(sequence_data, train_lm_hist_idx, uid_set, item_set)
+    rank_test = generate_rank_data(sequence_data, test_lm_hist_idx, uid_set, item_set)
+    rerank_train = generate_rerank_data(sequence_data, train_lm_hist_idx, uid_set, item_set)
+    rerank_test = generate_rerank_data(sequence_data, test_lm_hist_idx, uid_set, item_set)
 
     cutoffs = collect_cutoff_indices(rank_train, rank_test, rerank_train, rerank_test)
     memory = build_causal_multilevel_memory(sequence_data, item2attribute, datamap, cutoffs)
@@ -222,9 +227,19 @@ def main(proc_dir):
     save_pickle(rank_test, os.path.join(proc_dir, "rank.test"))
     save_pickle(rerank_train, os.path.join(proc_dir, "rerank.train"))
     save_pickle(rerank_test, os.path.join(proc_dir, "rerank.test"))
-    save_json({"train": train_uids, "test": test_uids, "lm_hist_idx": lm_hist_idx}, os.path.join(proc_dir, "train_test_split.json"))
+    save_json(
+        {
+            "train": uid_set,
+            "test": uid_set,
+            "train_lm_hist_idx": train_lm_hist_idx,
+            "test_lm_hist_idx": test_lm_hist_idx,
+            "lm_hist_idx": train_lm_hist_idx,
+        },
+        os.path.join(proc_dir, "train_test_split.json"),
+    )
     save_json(memory, os.path.join(proc_dir, "causal_multilevel_memory.json"))
-    save_json(generate_hist_prompt_multilevel_memory(sequence_data, item2attribute, datamap, lm_hist_idx, memory, "MOOCCubeX"), os.path.join(proc_dir, "prompt.hist.multilevel_memory"))
+    all_lm_hist_idx = {uid: sorted(set(train_lm_hist_idx.get(uid, []) + test_lm_hist_idx.get(uid, []))) for uid in train_lm_hist_idx}
+    save_json(generate_hist_prompt_multilevel_memory(sequence_data, item2attribute, datamap, all_lm_hist_idx, memory, "MOOCCubeX"), os.path.join(proc_dir, "prompt.hist.multilevel_memory"))
     save_json(generate_item_prompt_multilevel_memory(item2attribute, datamap, "MOOCCubeX"), os.path.join(proc_dir, "prompt.item.multilevel_memory"))
     save_json(generate_multilevel_memory_analysis_prompt(memory, datamap, "MOOCCubeX"), os.path.join(proc_dir, "prompt.memory_analysis"))
 

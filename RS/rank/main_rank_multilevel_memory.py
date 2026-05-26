@@ -91,7 +91,22 @@ def load_model_multilevel_memory(args, dataset):
 
 
 def get_optimizer_multilevel_memory(args, model, train_data_num):
-    return torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    base_params = []
+    memrec_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if any(key in name for key in ["convert", "film", "memory", "expert", "gate"]):
+            memrec_params.append(param)
+        else:
+            base_params.append(param)
+    return torch.optim.AdamW(
+        [
+            {"params": base_params, "lr": args.lr},
+            {"params": memrec_params, "lr": args.memrec_lr},
+        ],
+        weight_decay=args.weight_decay,
+    )
 
 
 def train_multilevel_memory(args):
@@ -151,7 +166,8 @@ def parse_args_multilevel_memory():
     parser.add_argument("--timestamp", default=datetime.datetime.now().strftime("%Y%m%d%H%M"))
     parser.add_argument("--epoch_num", default=20, type=int)
     parser.add_argument("--batch_size", default=512, type=int)
-    parser.add_argument("--lr", default=1e-4, type=float)
+    parser.add_argument("--lr", default=1e-3, type=float)
+    parser.add_argument("--memrec_lr", default=5e-4, type=float)
     parser.add_argument("--weight_decay", default=0.0, type=float)
     parser.add_argument("--dropout", default=0.0, type=float)
     parser.add_argument("--convert_dropout", default=0.0, type=float)
