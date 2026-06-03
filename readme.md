@@ -41,6 +41,11 @@ pip install torch numpy scikit-learn tqdm transformers requests
 
 ## Data Layout and Preprocessing
 
+Dataset sources:
+
+- MOOCCube: http://moocdata.cn/data/MOOCCube
+- MOOCCubeX: https://github.com/THU-KEG/MOOCCubeX
+
 After obtaining MOOCCubeX under the relevant license, place raw files under:
 
 ```text
