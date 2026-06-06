@@ -147,6 +147,23 @@ python RS/rerank/main_rerank_multilevel_memory.py \
   --reflection_mode
 ```
 
+## Reproducibility Settings
+
+The reported experiments use fixed preprocessing, candidate lists, and negative samples across all compared methods.
+
+- Random seed: `1234` for model training; `12345` for candidate generation and prompt construction.
+- Number of runs: one fixed-seed run per configuration unless otherwise stated.
+- Batch size: `512`.
+- Training epochs: `20`.
+- Early stopping: not enabled in the released scripts; models are trained with the fixed epoch budget above.
+- Optimizer: AdamW.
+- Learning rates: `1e-3` for the recommendation backbone and `5e-4` for the MemRec expert network.
+- Memory parameters: default `w_s=0.08`, `w_w=0.22`, `tau=7`, and `T_min=30` days.
+- Candidate lists: Rank uses 50 candidates with up to 5 positives; Rerank uses 10 candidates with up to 4 positives.
+- Hyperparameter ranges considered in the paper: sensory window `w_s` from `0.04` to `0.16`, long-term frequency threshold `tau` in `{3, 7, 10, 15}`, long-term span threshold including `15` and `30` days, and MoE expert configurations `(1,1)`, `(1,2)`, `(2,3)`, `(3,3)`, `(2,5)`, and `(4,4)`.
+- Text encoder and LLM robustness checks: BERT-base-uncased, BGE-M3, and Sentence-BERT all-MiniLM-L6-v2 for encoding; Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct, and Mistral-7B-Instruct for generation.
+- Computing infrastructure: one NVIDIA V100 GPU.
+
 ## Method Components
 
 MemRec contains three main technical components:
