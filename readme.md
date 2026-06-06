@@ -1,4 +1,4 @@
-# MemRec: Memory-Guided Course Recommendation
+# MemRec: Atkinson-Shiffrin Memory-Guided Course Recommendation with LLMs
 
 MemRec is a memory-guided knowledge augmentation framework for course recommendation. It models learner histories through the Atkinson-Shiffrin memory view: sensory memory captures immediate exploration, working memory captures the current learning task, and long-term memory captures stable domain interests and career-oriented expertise.
 
@@ -6,7 +6,7 @@ The system uses large language models as offline reflection engines rather than 
 
 ## System Overview
 
-MemRec follows a five-stage pipeline:
+The implementation pipeline has five steps; these correspond to the paper's three conceptual stages of memory separation, LLM-based knowledge generation and encoding, and downstream Rank/Rerank integration:
 
 1. Separate each learner history into sensory, working, and long-term memory layers.
 2. Build distribution and transition features that describe memory concentration, overlap, emerging exploration, consolidation, and retrieval influence.
@@ -45,6 +45,8 @@ Dataset sources:
 
 - MOOCCube: http://moocdata.cn/data/MOOCCube
 - MOOCCubeX: https://github.com/THU-KEG/MOOCCubeX
+
+The released commands focus on MOOCCubeX, while MOOCCube follows the same preprocessing and evaluation protocol.
 
 After obtaining MOOCCubeX under the relevant license, place raw files under:
 
@@ -128,13 +130,14 @@ MemRec appends a 64-dimensional memory-guided augmentation vector to the origina
 ```bash
 python RS/rank/main_rank_multilevel_memory.py \
   --data_dir data/MOOCCubeX/proc_data \
-  --task rerank \
   --algo DeepFM \
   --augment true \
   --aug_prefix bert_newprompt \
   --convert_type MultilevelMemoryHEA \
   --reflection_mode
 ```
+
+The rank-stage script loads `rank.train` and `rank.test` internally; it uses the same list-wise input format as reranking for candidate scoring.
 
 ```bash
 python RS/rerank/main_rerank_multilevel_memory.py \
