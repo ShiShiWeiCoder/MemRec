@@ -1,110 +1,120 @@
-# MemRec: Atkinson-Shiffrin Memory-Guided Course Recommendation with LLMs
+# MemRec: Multi-Level Memory Augmented Course Recommendation
 
-MemRec is a memory-guided knowledge augmentation framework for course recommendation. It models learner histories through the Atkinson-Shiffrin memory view: sensory memory captures immediate exploration, working memory captures the current learning task, and long-term memory captures stable domain interests and career-oriented expertise.
+This repository contains the anonymized key implementation for a multi-level memory augmented recommendation model on MOOC-style course recommendation data. The released code focuses on the reproducible components needed for review: data preprocessing, memory construction, LLM-based memory reflection, text encoding, Rank/Rerank training, and core ablations.
 
-The system uses large language models as offline reflection engines rather than as end-to-end recommenders. It generates structured semantic knowledge from memory-separated histories and course metadata, encodes the generated text with BERT, and injects the resulting vectors into ranking and reranking backbones through Memory Transition Reflection (MTR), FiLM-style conditioning, and memory-aware expert routing.
+## Anonymous Review Notice
 
-## System Overview
+This repository is prepared for anonymous review. Please host it with an anonymous service such as Anonymous GitHub or Anonymous OSF during the review period.
 
-The implementation pipeline has five steps; these correspond to the paper's three conceptual stages of memory separation, LLM-based knowledge generation and encoding, and downstream Rank/Rerank integration:
+Before sharing the repository, remove contributor names, email addresses, affiliations, private machine paths, API keys, model service credentials, commit metadata, and any institution-specific information from README files, comments, configuration files, scripts, logs, and Git history. Do not upload raw private data, generated logs, checkpoints, or reviewer-identifying metadata.
 
-1. Separate each learner history into sensory, working, and long-term memory layers.
-2. Build distribution and transition features that describe memory concentration, overlap, emerging exploration, consolidation, and retrieval influence.
-3. Generate three types of LLM-based knowledge: a user multi-level memory profile, a course cognitive attribute description, and an MTR reflection.
-4. Encode generated texts with BERT-base-uncased and mean pooling.
-5. Append the final memory-guided augmentation vector to standard Rank or Rerank backbone inputs.
+## Recommended Key Code to Share
 
-The framework is model-agnostic. In the paper, MemRec is integrated with six ranking backbones, including DeepFM, DCN, FiBiNet, AutoInt, DIN, and DIEN, and four reranking backbones, including DLCM, PRM, RankFormer, and PIER.
-
-## Repository Structure
+If only part of the code is uploaded, we recommend sharing the following key paths:
 
 ```text
 readme.md
-preprocess/preprocess_mooccubex_multilevel_memory.py
-preprocess/generate_mooccubex_multilevel_memory.py
-knowledge-generating/llm_generating_mooccubex_multilevel_memory.py
-knowledge_encoding/encode_analysis_bert.py
-RS/dataset.py
-RS/layers.py
-RS/models.py
-RS/rank/main_rank_multilevel_memory.py
-RS/rerank/main_rerank_multilevel_memory.py
+.gitignore
+preprocess/
+  pre_utils.py
+  preprocess_mooccubex_multilevel_memory.py
+  generate_mooccubex_multilevel_memory.py
+knowledge-generating/
+  llm_generating_mooccubex_multilevel_memory.py
+  llm_generating_memory_analysis_only.py
+knowledge_encoding/
+  utils.py
+  encode_analysis_bert.py
+  encode_analysis_bge_m3.py
+  encode_all_bge_m3.py
+RS/
+  dataset.py
+  layers.py
+  models.py
+  optimization.py
+  utils.py
+  rank/main_rank_multilevel_memory.py
+  rank/main_rank_no_aug.py
+  rank/main_rank_no_llm.py
+  rerank/main_rerank_multilevel_memory.py
+  rerank/main_rerank_no_aug.py
+ablation_experiments/
+  precompute_enhanced_gating_features.py
+  recompute_memory_features.py
+  run_p0_a1_pipeline.sh
+  run_p0_b1_concat.sh
+  run_p0_b2_xattn.sh
+  run_p0_a3_nomemgate.sh
+  tests/test_p0_fusion_modes.py
+  tools/extract_log_final_metrics.py
+  tools/render_p0_metrics_tables.py
 ```
+
+Generated folders such as `data/`, `logs/`, `figures/`, `__pycache__/`, `ablation_experiments/results/`, model checkpoints, and local experiment notes should not be uploaded unless they are explicitly anonymized and permitted by the data license.
 
 ## Requirements
 
-The code uses Python 3.8+ with common scientific and deep learning packages:
+The code was developed with Python 3.8+ and PyTorch. A typical environment includes:
 
 ```bash
-pip install torch numpy scikit-learn tqdm transformers requests
+pip install torch transformers numpy scikit-learn tqdm requests
 ```
 
-## Data Layout and Preprocessing
+Optional encoders can be loaded from local paths or from Hugging Face model names, depending on the review environment.
 
-Dataset sources:
+## Data Layout
 
-- MOOCCube: http://moocdata.cn/data/MOOCCube
-- MOOCCubeX: https://github.com/THU-KEG/MOOCCubeX
-
-The released commands focus on MOOCCubeX, while MOOCCube follows the same preprocessing and evaluation protocol.
-
-After obtaining MOOCCubeX under the relevant license, place raw files under:
+Raw and processed datasets are not included in this anonymous code release. After obtaining the dataset according to its license, place the files under:
 
 ```text
 data/MOOCCubeX/raw_data/
 ```
 
-The preprocessing stage writes processed files under:
-
-```text
-data/MOOCCubeX/proc_data/
-```
-
-The preprocessing stage sorts interactions chronologically, applies core filtering, constructs memory slots under point-wise temporal cutoffs, and writes processed files such as:
+The preprocessing scripts generate the following processed files under `data/MOOCCubeX/proc_data/`:
 
 ```text
 sequential_data.json
+sequential_timestamps.json
 item2attributes.json
 datamaps.json
-stat.json
 train_test_split.json
+multilevel_memory.json
 causal_multilevel_memory.json
+memory_partition_config.json
+enhanced_gating_features.json
+transition_features.json
 rank.train / rank.test
 rerank.train / rerank.test
-prompt.hist.multilevel_memory
-prompt.item.multilevel_memory
-prompt.memory_analysis
 ```
-
-The default memory parameters match the paper setting: sensory ratio `0.08`, working ratio `0.22`, long-term frequency threshold `7`, and long-term span threshold `30` days.
 
 ## Pipeline
 
-### 1. Preprocess Interactions
+### 1. Preprocess Interactions and Build Memory Slots
 
 ```bash
 python preprocess/preprocess_mooccubex_multilevel_memory.py \
-  --course_file data/MOOCCubeX/raw_data/course_new.json \
-  --user_file data/MOOCCubeX/raw_data/user.json \
-  --output_dir data/MOOCCubeX/proc_data \
+  --adaptive_window \
   --sensory_ratio 0.08 \
   --working_ratio 0.22 \
+  --time_window_days 30 \
+  --sensory_tightening 4 \
   --long_term_threshold 7 \
-  --long_term_min_timespan 30
+  --long_term_min_timespan 30 \
+  --output_dir data/MOOCCubeX/proc_data
 ```
 
-### 2. Generate Candidate Lists and Prompts
+### 2. Generate Rank/Rerank Candidate Lists and LLM Prompts
 
 ```bash
 python preprocess/generate_mooccubex_multilevel_memory.py \
   --proc_dir data/MOOCCubeX/proc_data
 ```
 
-Rank uses fixed 50-candidate lists with up to five positive courses. Rerank uses fixed 10-candidate lists with up to four positive courses. Memory and user-side knowledge for each sample are constructed only from interactions before the sample cutoff.
+Rank uses fixed 50-candidate lists with up to 5 positive courses. Rerank uses fixed 10-candidate lists with up to 4 positive courses. Negatives are sampled from the global course set while excluding the user's positive courses.
 
 ### 3. Generate Memory Reflection Text
 
-The paper uses Llama-3.1-8B-Instruct deployed locally with Ollama. The script accepts any compatible local generation endpoint.
+The default script calls a local OpenAI-compatible or Ollama-style LLM endpoint. Configure the endpoint and model in the script or through environment variables before running.
 
 ```bash
 python knowledge-generating/llm_generating_mooccubex_multilevel_memory.py \
@@ -112,32 +122,57 @@ python knowledge-generating/llm_generating_mooccubex_multilevel_memory.py \
   --output_dir data/MOOCCubeX/knowledge_multilevel_memory
 ```
 
-### 4. Encode Reflection Text
+This produces all three JSON-formatted knowledge streams required by equation (13):
 
-Generated user profiles, course attributes, and MTR reflections are encoded offline. The paper uses BERT-base-uncased with maximum length 512 and mean pooling, producing 768-dimensional vectors.
+```text
+data/MOOCCubeX/knowledge_multilevel_memory/user_multilevel_memory.klg
+data/MOOCCubeX/knowledge_multilevel_memory/item_multilevel_memory.klg
+data/MOOCCubeX/knowledge_multilevel_memory/memory_analysis.klg
+```
+
+### 4. Encode User, Course, and Reflection Text
 
 ```bash
 python knowledge_encoding/encode_analysis_bert.py \
   --knowledge_dir data/MOOCCubeX/knowledge_multilevel_memory \
-  --output_path data/MOOCCubeX/proc_data/bert_newprompt.analysis \
+  --data_dir data/MOOCCubeX/proc_data \
+  --output_prefix bert_newprompt \
   --model_path bert-base-uncased
 ```
 
-### 5. Train Rank and Rerank Models
+The command fails if any knowledge stream is absent and writes the complete training contract:
 
-MemRec appends a 64-dimensional memory-guided augmentation vector to the original recommendation features and optimizes the augmentation module jointly with the backbone. Offline memory separation, LLM generation, and BERT encoding do not receive gradients.
+```text
+bert_newprompt.hist
+bert_newprompt.item
+bert_newprompt.analysis
+```
+
+Other encoders can be evaluated with the BGE-M3 and MiniLM encoding scripts in `knowledge_encoding/`.
+
+### 5. Train Rank Model
 
 ```bash
 python RS/rank/main_rank_multilevel_memory.py \
   --data_dir data/MOOCCubeX/proc_data \
-  --algo DeepFM \
+  --task rerank \
+  --algo DIN \
   --augment true \
   --aug_prefix bert_newprompt \
   --convert_type MultilevelMemoryHEA \
-  --reflection_mode
+  --export_num 2 \
+  --specific_export_num 3 \
+  --convert_arch 128,32 \
+  --convert_dropout 0.2 \
+  --lr 1e-3 \
+  --enhanced_gating \
+  --reflection_mode \
+  --fusion_mode film \
+  --metric_scope 5,10 \
+  --metrics_output results/paper_metrics/mooccubex_rank_din.json
 ```
 
-The rank-stage script loads `rank.train` and `rank.test` internally; it uses the same list-wise input format as reranking for candidate scoring.
+### 6. Train Rerank Model
 
 ```bash
 python RS/rerank/main_rerank_multilevel_memory.py \
@@ -147,32 +182,46 @@ python RS/rerank/main_rerank_multilevel_memory.py \
   --augment true \
   --aug_prefix bert_newprompt \
   --convert_type MultilevelMemoryHEA \
-  --reflection_mode
+  --export_num 2 \
+  --specific_export_num 3 \
+  --convert_arch 128,32 \
+  --convert_dropout 0.2 \
+  --lr 1e-3 \
+  --enhanced_gating \
+  --reflection_mode \
+  --fusion_mode film \
+  --metric_scope 1,3,5 \
+  --metrics_output results/paper_metrics/mooccubex_rerank_dlcm.json
 ```
 
-## Reproducibility Settings
+## Core Ablations
 
-The reported experiments use fixed preprocessing, candidate lists, and negative samples across all compared methods.
+The main ablations can be reproduced by changing the following arguments:
 
-- Random seed: `1234` for model training; `12345` for candidate generation and prompt construction.
-- Number of runs: one fixed-seed run per configuration unless otherwise stated.
-- Batch size: `512`.
-- Training epochs: `20`.
-- Early stopping: not enabled in the released scripts; models are trained with the fixed epoch budget above.
-- Optimizer: AdamW.
-- Learning rates: `1e-3` for the recommendation backbone and `5e-4` for the MemRec expert network.
-- Memory parameters: default `w_s=0.08`, `w_w=0.22`, `tau=7`, and `T_min=30` days.
-- Candidate lists: Rank uses 50 candidates with up to 5 positives; Rerank uses 10 candidates with up to 4 positives.
-- Hyperparameter ranges considered in the paper: sensory window `w_s` from `0.04` to `0.16`, long-term frequency threshold `tau` in `{3, 7, 10, 15}`, long-term span threshold including `15` and `30` days, and MoE expert configurations `(1,1)`, `(1,2)`, `(2,3)`, `(3,3)`, `(2,5)`, and `(4,4)`.
-- Text encoder and LLM robustness checks: BERT-base-uncased, BGE-M3, and Sentence-BERT all-MiniLM-L6-v2 for encoding; Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct, and Mistral-7B-Instruct for generation.
-- Computing infrastructure: one NVIDIA V100 GPU.
+```text
+--no_analysis              remove memory-transition reflection vectors
+--skip_user_profile        remove user-side profile vectors
+--skip_course_profile      remove item/course profile vectors
+--fusion_mode concat       replace FiLM-style modulation with concatenation
+--fusion_mode xattn        replace FiLM-style modulation with cross attention
+```
 
-## Method Components
+A lightweight shape and gradient check for the fusion modules is available:
 
-MemRec contains three main technical components:
+```bash
+python ablation_experiments/tests/test_p0_fusion_modes.py
+```
 
-- Multi-level memory separation maps interaction histories to sensory, working, and long-term memory according to recency, current-session concentration, domain frequency, and time-span persistence.
-- Memory Transition Reflection asks the LLM to reason about attention selection from sensory to working memory, consolidation from working to long-term memory, and retrieval influence from long-term expertise to new learning.
-- FiLM-conditioned semantic modulation and memory-aware MoE routing transform the user, course, and MTR vectors into the final augmentation vector used by Rank and Rerank models.
+## Evaluation Protocol
 
-Large generated files, raw datasets, checkpoints, logs, and figures are intentionally kept outside the repository.
+All baselines and MemRec variants use the same per-user chronological 9:1 split, candidate lists, and negative samples. Every retained user has at least five interactions before the first supervised sample, and no candidate group crosses the train/test cutoff. Rank is evaluated on 50-candidate sampled lists and writes MAP@5/10, NDCG@5/10, HR@5/10, MRR, and AUC. Rerank is evaluated on 10-candidate sampled lists and writes MAP@1/3/5, NDCG@1/3/5, HR@1/3/5, and MRR. Each public training command emits a machine-readable JSON report through `--metrics_output`.
+
+Before training, validate the complete public pipeline contract:
+
+```bash
+python scripts/verify_portable.py --dataset mooccubex
+```
+
+## Reproducibility Notes
+
+Set random seeds when comparing variants. Keep generated LLM outputs and encoded vectors fixed across baseline comparisons whenever possible. Large generated artifacts, raw datasets, model checkpoints, and logs should be distributed separately from the anonymous code repository if the data license and review policy allow it.
