@@ -131,8 +131,6 @@ bert_newprompt.item
 bert_newprompt.analysis
 ```
 
-Other encoders can be evaluated with the BGE-M3 and MiniLM encoding scripts in `knowledge_encoding/`.
-
 ### 5. Train Rank Model
 
 ```bash
