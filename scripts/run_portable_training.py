@@ -10,20 +10,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIRS = {
     "mooccubex": ROOT / "data" / "MOOCCubeX" / "proc_data",
-    "mooccube": ROOT / "data" / "MOOCCube" / "proc_data",
-    "coursera": ROOT / "data" / "coursera" / "proc_data",
 }
 
 
 def build_command(args):
     data_dir = DATA_DIRS[args.dataset]
     if args.task == "rank":
-        entry = "main_rank_multilevel_memory.py" if args.mode == "memrec" else "main_rank_no_aug.py"
+        entry = "main_rank_multilevel_memory.py"
         script = ROOT / "RS" / "rank" / entry
         algorithm = args.algo or "DIN"
         metrics = "5,10"
     else:
-        entry = "main_rerank_multilevel_memory.py" if args.mode == "memrec" else "main_rerank_no_aug.py"
+        entry = "main_rerank_multilevel_memory.py"
         script = ROOT / "RS" / "rerank" / entry
         algorithm = args.algo or "DLCM"
         metrics = "1,3,5"
@@ -33,7 +31,7 @@ def build_command(args):
         "-u",
         str(script),
         f"--data_dir={data_dir}",
-        "--task=rerank",
+        f"--task={args.task}",
         f"--algo={algorithm}",
         f"--epoch_num={args.epochs}",
         f"--batch_size={args.batch_size}",
@@ -76,7 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=DATA_DIRS, default="mooccubex")
     parser.add_argument("--task", choices=["rank", "rerank"], default="rank")
-    parser.add_argument("--mode", choices=["baseline", "memrec"], default="memrec")
+    parser.add_argument("--mode", choices=["memrec"], default="memrec")
     parser.add_argument("--algo", help="Default: DIN for Rank, DLCM for Rerank")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=512)

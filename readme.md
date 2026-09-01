@@ -1,6 +1,6 @@
 # MemRec: Multi-Level Memory Augmented Course Recommendation
 
-This repository contains the anonymized key implementation for a multi-level memory augmented recommendation model on MOOC-style course recommendation data. The released code focuses on the reproducible components needed for review: data preprocessing, memory construction, LLM-based memory reflection, text encoding, Rank/Rerank training, and core ablations.
+This repository contains the anonymized key implementation for a multi-level memory augmented recommendation model on MOOC-style course recommendation data. The released code focuses on the reproducible components needed for review: MOOCCubeX preprocessing, memory construction, LLM-based memory reflection, text encoding, and Rank/Rerank training.
 
 ## Anonymous Review Notice
 
@@ -8,9 +8,7 @@ This repository is prepared for anonymous review. Please host it with an anonymo
 
 Before sharing the repository, remove contributor names, email addresses, affiliations, private machine paths, API keys, model service credentials, commit metadata, and any institution-specific information from README files, comments, configuration files, scripts, logs, and Git history. Do not upload raw private data, generated logs, checkpoints, or reviewer-identifying metadata.
 
-## Recommended Key Code to Share
-
-If only part of the code is uploaded, we recommend sharing the following key paths:
+## Public Code Layout
 
 ```text
 readme.md
@@ -21,12 +19,8 @@ preprocess/
   generate_mooccubex_multilevel_memory.py
 knowledge-generating/
   llm_generating_mooccubex_multilevel_memory.py
-  llm_generating_memory_analysis_only.py
 knowledge_encoding/
-  utils.py
   encode_analysis_bert.py
-  encode_analysis_bge_m3.py
-  encode_all_bge_m3.py
 RS/
   dataset.py
   layers.py
@@ -34,23 +28,12 @@ RS/
   optimization.py
   utils.py
   rank/main_rank_multilevel_memory.py
-  rank/main_rank_no_aug.py
-  rank/main_rank_no_llm.py
   rerank/main_rerank_multilevel_memory.py
-  rerank/main_rerank_no_aug.py
-ablation_experiments/
-  precompute_enhanced_gating_features.py
-  recompute_memory_features.py
-  run_p0_a1_pipeline.sh
-  run_p0_b1_concat.sh
-  run_p0_b2_xattn.sh
-  run_p0_a3_nomemgate.sh
-  tests/test_p0_fusion_modes.py
-  tools/extract_log_final_metrics.py
-  tools/render_p0_metrics_tables.py
+scripts/
+  run_portable_training.py
 ```
 
-Generated folders such as `data/`, `logs/`, `figures/`, `__pycache__/`, `ablation_experiments/results/`, model checkpoints, and local experiment notes should not be uploaded unless they are explicitly anonymized and permitted by the data license.
+Generated folders such as `data/`, `logs/`, `figures/`, `__pycache__/`, model checkpoints, and local experiment notes are intentionally excluded from the public repository.
 
 ## Requirements
 
@@ -155,7 +138,7 @@ Other encoders can be evaluated with the BGE-M3 and MiniLM encoding scripts in `
 ```bash
 python RS/rank/main_rank_multilevel_memory.py \
   --data_dir data/MOOCCubeX/proc_data \
-  --task rerank \
+  --task rank \
   --algo DIN \
   --augment true \
   --aug_prefix bert_newprompt \
@@ -194,34 +177,10 @@ python RS/rerank/main_rerank_multilevel_memory.py \
   --metrics_output results/paper_metrics/mooccubex_rerank_dlcm.json
 ```
 
-## Core Ablations
-
-The main ablations can be reproduced by changing the following arguments:
-
-```text
---no_analysis              remove memory-transition reflection vectors
---skip_user_profile        remove user-side profile vectors
---skip_course_profile      remove item/course profile vectors
---fusion_mode concat       replace FiLM-style modulation with concatenation
---fusion_mode xattn        replace FiLM-style modulation with cross attention
-```
-
-A lightweight shape and gradient check for the fusion modules is available:
-
-```bash
-python ablation_experiments/tests/test_p0_fusion_modes.py
-```
-
 ## Evaluation Protocol
 
-All baselines and MemRec variants use the same per-user chronological 9:1 split, candidate lists, and negative samples. Every retained user has at least five interactions before the first supervised sample, and no candidate group crosses the train/test cutoff. Rank is evaluated on 50-candidate sampled lists and writes MAP@5/10, NDCG@5/10, HR@5/10, MRR, and AUC. Rerank is evaluated on 10-candidate sampled lists and writes MAP@1/3/5, NDCG@1/3/5, HR@1/3/5, and MRR. Each public training command emits a machine-readable JSON report through `--metrics_output`.
-
-Before training, validate the complete public pipeline contract:
-
-```bash
-python scripts/verify_portable.py --dataset mooccubex
-```
+The public MemRec pipeline uses a per-user chronological 9:1 split, fixed candidate lists, and leakage-free negative samples. Every retained user has at least five interactions before the first supervised sample, and no candidate group crosses the train/test cutoff. Rank is evaluated on 50-candidate sampled lists and writes MAP@5/10, NDCG@5/10, HR@5/10, MRR, and AUC. Rerank is evaluated on 10-candidate sampled lists and writes MAP@1/3/5, NDCG@1/3/5, HR@1/3/5, and MRR. The public training entry point emits a machine-readable JSON report through `--metrics_output`.
 
 ## Reproducibility Notes
 
-Set random seeds when comparing variants. Keep generated LLM outputs and encoded vectors fixed across baseline comparisons whenever possible. Large generated artifacts, raw datasets, model checkpoints, and logs should be distributed separately from the anonymous code repository if the data license and review policy allow it.
+Set random seeds for reproducible runs. Keep generated LLM outputs and encoded vectors fixed when comparing configurations. Large generated artifacts, raw datasets, model checkpoints, and logs should be distributed separately from the anonymous code repository if the data license and review policy allow it.
