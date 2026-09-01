@@ -2,39 +2,6 @@
 
 This repository contains the anonymized key implementation for a multi-level memory augmented recommendation model on MOOC-style course recommendation data. The released code focuses on the reproducible components needed for review: MOOCCubeX preprocessing, memory construction, LLM-based memory reflection, text encoding, and Rank/Rerank training.
 
-## Anonymous Review Notice
-
-This repository is prepared for anonymous review. Please host it with an anonymous service such as Anonymous GitHub or Anonymous OSF during the review period.
-
-Before sharing the repository, remove contributor names, email addresses, affiliations, private machine paths, API keys, model service credentials, commit metadata, and any institution-specific information from README files, comments, configuration files, scripts, logs, and Git history. Do not upload raw private data, generated logs, checkpoints, or reviewer-identifying metadata.
-
-## Public Code Layout
-
-```text
-readme.md
-.gitignore
-preprocess/
-  pre_utils.py
-  preprocess_mooccubex_multilevel_memory.py
-  generate_mooccubex_multilevel_memory.py
-knowledge-generating/
-  llm_generating_mooccubex_multilevel_memory.py
-knowledge_encoding/
-  encode_analysis_bert.py
-RS/
-  dataset.py
-  layers.py
-  models.py
-  optimization.py
-  utils.py
-  rank/main_rank_multilevel_memory.py
-  rerank/main_rerank_multilevel_memory.py
-scripts/
-  run_portable_training.py
-```
-
-Generated folders such as `data/`, `logs/`, `figures/`, `__pycache__/`, model checkpoints, and local experiment notes are intentionally excluded from the public repository.
-
 ## Requirements
 
 The code was developed with Python 3.8+ and PyTorch. A typical environment includes:
@@ -178,7 +145,3 @@ python RS/rerank/main_rerank_multilevel_memory.py \
 ## Evaluation Protocol
 
 The public MemRec pipeline uses a per-user chronological 9:1 split, fixed candidate lists, and leakage-free negative samples. Every retained user has at least five interactions before the first supervised sample, and no candidate group crosses the train/test cutoff. Rank is evaluated on 50-candidate sampled lists and writes MAP@5/10, NDCG@5/10, HR@5/10, MRR, and AUC. Rerank is evaluated on 10-candidate sampled lists and writes MAP@1/3/5, NDCG@1/3/5, HR@1/3/5, and MRR. The public training entry point emits a machine-readable JSON report through `--metrics_output`.
-
-## Reproducibility Notes
-
-Set random seeds for reproducible runs. Keep generated LLM outputs and encoded vectors fixed when comparing configurations. Large generated artifacts, raw datasets, model checkpoints, and logs should be distributed separately from the anonymous code repository if the data license and review policy allow it.
