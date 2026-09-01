@@ -1,118 +1,205 @@
 import torch
 import torch.utils.data as Data
-
-
-def load_json(path):
-    import json
-
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def load_pickle(path):
-    import pickle
-
-    with open(path, "rb") as f:
-        return pickle.load(f)
+import pickle
+import numpy as np
+from utils import load_json, load_pickle
 
 
 class AmzDataset(Data.Dataset):
-    def __init__(self, data_path, set="train", task="ctr", max_hist_len=10, augment=False, aug_prefix=None, data_file=None):
+    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None, data_file=None):
         self.task = task
         self.max_hist_len = max_hist_len
         self.augment = augment
         self.set = set
-
+        # data_file参数用于Rank粗排：加载rank数据但task设为rerank（Rank和Rerank模型逻辑相同）
         file_name = data_file if data_file is not None else task
-        self.data = load_pickle(f"{data_path}/{file_name}.{set}")
-        self.stat = load_json(f"{data_path}/stat.json")
-        self.item_num = self.stat["item_num"]
-        self.attr_num = self.stat["attribute_num"]
-        self.attr_ft_num = self.stat["attribute_ft_num"]
-        self.rating_num = self.stat["rating_num"]
-        self.dense_dim = self.stat["dense_dim"]
+        self.data = load_pickle(data_path + f'/{file_name}.{set}')
+        self.stat = load_json(data_path + '/stat.json')
+        self.item_num = self.stat['item_num']
+        self.attr_num = self.stat['attribute_num']
+        self.attr_ft_num = self.stat['attribute_ft_num']
+        self.rating_num = self.stat['rating_num']
+        self.dense_dim = self.stat['dense_dim']
+        if task == 'rerank':
+            # 根据实际加载的数据文件确定列表长度
+            if data_file == 'rank':
+                # Rank protocol uses fixed 50-candidate lists. Legacy files
+                # are normalized in __getitem__ so train/test shapes match.
+                self.max_list_len = 50
+                print(f'Rank粗排候选数量（固定协议）: {self.max_list_len}')
+            else:
+                self.max_list_len = self.stat['rerank_list_len']
         self.length = len(self.data)
-        self.sequential_data = load_json(f"{data_path}/sequential_data.json")
-        self.item2attribution = load_json(f"{data_path}/item2attributes.json")
+        self.sequential_data = load_json(data_path + '/sequential_data.json')
+        self.item2attribution = load_json(data_path + '/item2attributes.json')
+        datamaps = load_json(data_path + '/datamaps.json')
+        self.id2item = datamaps['id2item']
+        self.id2user = datamaps['id2user']
 
-        if task == "rerank":
-            self.max_list_len = self.stat.get("rerank_list_len", 10)
-            if data_file == "rank" and self.data:
-                self.max_list_len = len(self.data[0][2])
+        # 初始化缺失计数器
+        self.missing_item_aug_count = 0
+        self.missing_hist_aug_count = 0
 
-        self.aug_vec_dim = 0
         if augment:
-            self.hist_aug_data = load_json(f"{data_path}/{aug_prefix}.hist")
-            self.item_aug_data = load_json(f"{data_path}/{aug_prefix}.item")
-            sample_key = next(iter(self.item_aug_data))
+            print(f"Loading augment data for {set} set...")
+            self.hist_aug_data = load_json(data_path + f'/{aug_prefix}.hist')
+            self.item_aug_data = load_json(data_path + f'/{aug_prefix}.item')
+            # 获取增强向量的维度，用于创建默认零向量
+            sample_key = list(self.item_aug_data.keys())[0]
             self.aug_vec_dim = len(self.item_aug_data[sample_key])
+            print(f'Augment vector dimension: {self.aug_vec_dim}')
+            print(f'Item augment data size: {len(self.item_aug_data)}, Hist augment data size: {len(self.hist_aug_data)}')
+        else:
+            self.aug_vec_dim = 0
+
+        print(f"Dataset {set} initialized: {self.length} samples")
 
     def __len__(self):
         return self.length
 
-    def _first_attribute(self, attr):
-        if self.attr_ft_num == 1 and isinstance(attr, list):
-            return attr[0] if attr else 0
-        return attr
+    def __getitem__(self, _id):
+        try:
+            if self.task == 'ctr':
+                uid, seq_idx, lb = self.data[_id]
+                item_seq, rating_seq = self.sequential_data[str(uid)]
+                iid = item_seq[seq_idx]
+                hist_seq_len = seq_idx - max(0, seq_idx - self.max_hist_len)
+                attri_id = self.item2attribution[str(iid)]
+                hist_item_seq = item_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
+                hist_rating_seq = rating_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
+                hist_attri_seq = [self.item2attribution[str(idx)] for idx in hist_item_seq]
 
-    def _history(self, uid, seq_idx):
-        item_seq, rating_seq = self.sequential_data[str(uid)]
-        start = max(0, seq_idx - self.max_hist_len)
-        hist_items = item_seq[start:seq_idx]
-        hist_ratings = rating_seq[start:seq_idx]
-        hist_attrs = [self._first_attribute(self.item2attribution[str(item)]) for item in hist_items]
-        return hist_items, hist_attrs, hist_ratings, len(hist_items)
+                # 处理属性数据 - 根据attribute_ft_num决定如何处理
+                if self.attr_ft_num == 1:
+                    # 如果只需要一个属性，取第一个
+                    processed_attri_id = attri_id[0] if isinstance(attri_id, list) and len(attri_id) > 0 else attri_id
+                    processed_hist_attri_seq = []
+                    for attr_list in hist_attri_seq:
+                        if isinstance(attr_list, list) and len(attr_list) > 0:
+                            processed_hist_attri_seq.append(attr_list[0])
+                        else:
+                            processed_hist_attri_seq.append(attr_list if not isinstance(attr_list, list) else 0)
+                else:
+                    # 如果需要多个属性，保持原有格式
+                    processed_attri_id = attri_id
+                    processed_hist_attri_seq = hist_attri_seq
 
-    def __getitem__(self, index):
-        if self.task == "ctr":
-            uid, seq_idx, label = self.data[index]
-            item_seq, _ = self.sequential_data[str(uid)]
-            iid = item_seq[seq_idx]
-            hist_items, hist_attrs, hist_ratings, hist_len = self._history(uid, seq_idx)
-            out = {
-                "iid": torch.tensor(iid).long(),
-                "aid": torch.tensor(self._first_attribute(self.item2attribution[str(iid)])).long(),
-                "lb": torch.tensor(label).long(),
-                "hist_iid_seq": torch.tensor(hist_items).long(),
-                "hist_aid_seq": torch.tensor(hist_attrs).long(),
-                "hist_rate_seq": torch.tensor(hist_ratings).long(),
-                "hist_seq_len": torch.tensor(hist_len).long(),
-            }
-            if self.augment:
-                out["item_aug_vec"] = torch.tensor(self.item_aug_data.get(str(iid), [0.0] * self.aug_vec_dim)).float()
-                out["hist_aug_vec"] = torch.tensor(self.hist_aug_data.get(f"{uid}:{seq_idx}", [0.0] * self.aug_vec_dim)).float()
-            return out
+                out_dict = {
+                    'iid': torch.tensor(iid).long(),
+                    'aid': torch.tensor(processed_attri_id).long(),
+                    'lb': torch.tensor(lb).long(),
+                    'hist_iid_seq': torch.tensor(hist_item_seq).long(),
+                    'hist_aid_seq': torch.tensor(processed_hist_attri_seq).long(),
+                    'hist_rate_seq': torch.tensor(hist_rating_seq).long(),
+                    'hist_seq_len': torch.tensor(hist_seq_len).long()
+                }
+                if self.augment:
+                    item_key = str(iid)
+                    if item_key in self.item_aug_data:
+                        item_aug_vec = self.item_aug_data[item_key]
+                    else:
+                        self.missing_item_aug_count += 1
+                        item_aug_vec = [0.0] * self.aug_vec_dim
 
-        if self.task == "rerank":
-            uid, seq_idx, candidates, labels = self.data[index]
-            actual_len = len(candidates)
-            pad_len = max(0, self.max_list_len - actual_len)
-            padded_candidates = candidates + [0] * pad_len
-            padded_labels = labels + [0] * pad_len
-            candidate_attrs = [
-                self._first_attribute(self.item2attribution.get(str(item), [0]))
-                for item in padded_candidates
-            ]
-            hist_items, hist_attrs, hist_ratings, hist_len = self._history(uid, seq_idx)
-            out = {
-                "iid_list": torch.tensor(padded_candidates).long(),
-                "aid_list": torch.tensor(candidate_attrs).long(),
-                "lb_list": torch.tensor(padded_labels).long(),
-                "hist_iid_seq": torch.tensor(hist_items).long(),
-                "hist_aid_seq": torch.tensor(hist_attrs).long(),
-                "hist_rate_seq": torch.tensor(hist_ratings).long(),
-                "hist_seq_len": torch.tensor(hist_len).long(),
-                "list_len": torch.tensor(actual_len).long(),
-            }
-            if self.augment:
-                item_vecs = [
-                    torch.tensor(self.item_aug_data.get(str(item), [0.0] * self.aug_vec_dim)).float()
-                    if pos < actual_len and item != 0
-                    else torch.tensor([0.0] * self.aug_vec_dim).float()
-                    for pos, item in enumerate(padded_candidates)
-                ]
-                out["item_aug_vec_list"] = item_vecs
-                out["hist_aug_vec"] = torch.tensor(self.hist_aug_data.get(f"{uid}:{seq_idx}", [0.0] * self.aug_vec_dim)).float()
-            return out
+                    user_key = str(uid)
+                    sample_key = f"{user_key}:{seq_idx}"
+                    if sample_key in self.hist_aug_data:
+                        hist_aug_vec = self.hist_aug_data[sample_key]
+                    elif user_key in self.hist_aug_data:
+                        hist_aug_vec = self.hist_aug_data[user_key]
+                    else:
+                        self.missing_hist_aug_count += 1
+                        hist_aug_vec = [0.0] * self.aug_vec_dim
 
-        raise NotImplementedError(f"Unsupported task: {self.task}")
+                    out_dict['item_aug_vec'] = torch.tensor(item_aug_vec).float()
+                    out_dict['hist_aug_vec'] = torch.tensor(hist_aug_vec).float()
+
+            elif self.task == 'rerank':
+                uid, seq_idx, candidates, candidate_lbs = self.data[_id]
+                candidates_attr = [self.item2attribution[str(idx)] for idx in candidates]
+                item_seq, rating_seq = self.sequential_data[str(uid)]
+                hist_seq_len = seq_idx - max(0, seq_idx - self.max_hist_len)
+                hist_item_seq = item_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
+                hist_rating_seq = rating_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
+                hist_attri_seq = [self.item2attribution[str(idx)] for idx in hist_item_seq]
+
+                # 处理候选项属性和历史属性
+                if self.attr_ft_num == 1:
+                    processed_candidates_attr = []
+                    for attr_list in candidates_attr:
+                        if isinstance(attr_list, list) and len(attr_list) > 0:
+                            processed_candidates_attr.append(attr_list[0])
+                        else:
+                            processed_candidates_attr.append(attr_list if not isinstance(attr_list, list) else 0)
+
+                    processed_hist_attri_seq = []
+                    for attr_list in hist_attri_seq:
+                        if isinstance(attr_list, list) and len(attr_list) > 0:
+                            processed_hist_attri_seq.append(attr_list[0])
+                        else:
+                            processed_hist_attri_seq.append(attr_list if not isinstance(attr_list, list) else 0)
+                else:
+                    processed_candidates_attr = candidates_attr
+                    processed_hist_attri_seq = hist_attri_seq
+
+                # 对候选项进行 padding 到 max_list_len（确保所有样本的候选项数量一致）
+                actual_list_len = len(candidates)
+                if actual_list_len > self.max_list_len:
+                    candidates = list(candidates[:self.max_list_len])
+                    processed_candidates_attr = list(processed_candidates_attr[:self.max_list_len])
+                    candidate_lbs = list(candidate_lbs[:self.max_list_len])
+                    actual_list_len = self.max_list_len
+                if actual_list_len < self.max_list_len:
+                    # Pad with 0 (padding token)
+                    pad_len = self.max_list_len - actual_list_len
+                    candidates = candidates + [0] * pad_len
+                    processed_candidates_attr = processed_candidates_attr + [0] * pad_len
+                    candidate_lbs = candidate_lbs + [0] * pad_len
+
+                out_dict = {
+                    'iid_list': torch.tensor(candidates).long(),
+                    'aid_list': torch.tensor(processed_candidates_attr).long(),
+                    'lb_list': torch.tensor(candidate_lbs).long(),
+                    'hist_iid_seq': torch.tensor(hist_item_seq).long(),
+                    'hist_aid_seq': torch.tensor(processed_hist_attri_seq).long(),
+                    'hist_rate_seq': torch.tensor(hist_rating_seq).long(),
+                    'hist_seq_len': torch.tensor(hist_seq_len).long(),
+                    'list_len': torch.tensor(actual_list_len).long()  # 记录实际的候选项数量
+                }
+                if self.augment:
+                    item_aug_vec = []
+                    for i, idx in enumerate(candidates):
+                        # 对于 padding 的项目（idx=0 或超出实际长度），使用零向量
+                        if i >= actual_list_len or idx == 0:
+                            item_aug_vec.append(torch.tensor([0.0] * self.aug_vec_dim).float())
+                        else:
+                            item_key = str(idx)
+                            if item_key in self.item_aug_data:
+                                item_aug_vec.append(torch.tensor(self.item_aug_data[item_key]).float())
+                            else:
+                                # print(f'Warning: Missing item augment data for item ID {item_key}, using zero vector')
+                                item_aug_vec.append(torch.tensor([0.0] * self.aug_vec_dim).float())
+
+                    user_key = str(uid)
+                    sample_key = f"{user_key}:{seq_idx}"
+                    if sample_key in self.hist_aug_data:
+                        hist_aug_vec = self.hist_aug_data[sample_key]
+                    elif user_key in self.hist_aug_data:
+                        hist_aug_vec = self.hist_aug_data[user_key]
+                    else:
+                        # print(f'Warning: Missing hist augment data for user ID {user_key}, using zero vector')
+                        hist_aug_vec = [0.0] * self.aug_vec_dim
+
+                    out_dict['item_aug_vec_list'] = item_aug_vec
+                    out_dict['hist_aug_vec'] = torch.tensor(hist_aug_vec).float()
+            else:
+                raise NotImplementedError
+
+            return out_dict
+
+        except Exception as e:
+            print(f"Error in __getitem__ at index {_id}: {str(e)}")
+            print(f"Data sample: {self.data[_id] if _id < len(self.data) else 'Index out of range'}")
+            if hasattr(self, 'augment') and self.augment:
+                print(f"Augment enabled, aug_vec_dim: {self.aug_vec_dim}")
+            raise e

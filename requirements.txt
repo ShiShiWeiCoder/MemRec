@@ -1,0 +1,13 @@
+# Core recommendation and preprocessing pipeline
+numpy>=1.23,<3
+torch>=2.0
+scikit-learn>=1.2
+transformers>=4.36
+tqdm>=4.65
+requests>=2.28
+pandas>=1.5
+jieba>=0.42
+
+# Analysis and figure generation
+scipy>=1.10
+matplotlib>=3.7
